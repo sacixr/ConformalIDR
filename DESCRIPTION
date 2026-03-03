@@ -15,7 +15,10 @@ License: GPL (>= 2)
 Imports:
     Rcpp (>= 0.12.0),
     scoringRules,
-    clue
+    clue,
+    testthat,
+    class,
+    fpc
 Suggests:
   rpart
 Depends:
@@ -23,3 +26,4 @@ Depends:
 LinkingTo: Rcpp, RcppArmadillo
 Encoding: UTF-8
 RoxygenNote: 7.3.2
+Config/testthat/edition: 3
