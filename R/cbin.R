@@ -6,10 +6,9 @@
 #'
 #'
 #' @inheritParams cops
-#' @param binning binning method used to construct the bins; either \code{"k-means"} (default) or \code{"tree"}
+#' @param binning binning method used to construct the bins; either \code{"k-means"} (default), \code{"tree"}, \code{"hclust"} or \code{"dbscan"}
 #' @param k number of bins (for k-means clustering)
 #' @param cp complexity parameter (for regression tree binning)
-#'
 #'
 #' @return
 #' \code{conformal_bin()} returns a list of objects of class \code{"cops"} containing
@@ -129,7 +128,7 @@
 #'
 #' @name cbin
 #' @export
-conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL, online = FALSE, weights = NULL, binning = c("kmeans", "tree"), k = 1, cp = 0.01) {
+conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL, online = FALSE, weights = NULL, binning = c("kmeans", "tree", "hclust", "dbscan"), cut, k = 1, cp = 0.01, eps=0.5, minPts=1) {
   binning <- match.arg(binning)
   check_cops_args(x, y, x_out, y_out, x_est, y_est, "cbin", online, weights, binning = binning, k = k, cp = cp)
 
@@ -140,6 +139,9 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
     # split conformal - estimate clusters on the estimation sample
 
     if (binning == "kmeans") {
+      if (k == 0) { # if k is not provided, estimate an optimal k
+        k <- elbow_method(as.matrix(x_est), NULL, "kmeans")
+      }
       out <- stats::kmeans(as.matrix(x_est), k)
       tr_cl <- clue::cl_predict(out, as.matrix(x)) |> as.vector()
       ts_cl <- clue::cl_predict(out, as.matrix(x_out)) |> as.vector()
@@ -152,6 +154,22 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
       tree$frame$yval[leaf_ind] <- 1:k
       tr_cl <- stats::predict(tree, newdata = data.frame(x = x)) |> unname()
       ts_cl <- stats::predict(tree, newdata = data.frame(x = x_out)) |> unname()
+    } else if (binning == "hclust") {
+      hclust_cl <- opt_hclust(x_est, "ward.D2", cut, k)
+      x_est <- as.matrix(x_est)
+      k <- length(unique(hclust_cl))
+      tr_cl <- class::knn(x_est, as.matrix(x), cl=factor(hclust_cl), k=k) # since hclust doesn't naturally classify, we use knn
+      ts_cl <- class::knn(x_est, as.matrix(x_out), cl=factor(hclust_cl), k=k)
+    } else if (binning == "dbscan") {
+      x_est <- as.matrix(x_est)
+      dbscan_cl <- fpc::dbscan(x_est, eps=eps, MinPts=minPts)
+      k <- length(unique(dbscan_cl$cluster))
+      tr_cl <- fpc::predict.dbscan(dbscan_cl, x_est, as.matrix(x))
+      y <- y[tr_cl!=0] # remove outliers
+      tr_cl <- tr_cl[tr_cl!=0]
+      ts_cl <- fpc::predict.dbscan(dbscan_cl, x_est, as.matrix(x_out))
+      x_out <- x_out[ts_cl!=0]
+      ts_cl <- ts_cl[ts_cl!=0]
     }
 
     points <- sapply(1:k, function(i) y[tr_cl == i] |> sort())
@@ -181,13 +199,28 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
     # full conformal - estimate clusters using the new training covariate x_n+1
 
     out_list <- lapply(seq_along(x_out), function(i) {
-
       xn1 <- c(x, x_out[i])
       n1 <- length(xn1)
 
-      out <- stats::kmeans(as.matrix(xn1), k)
-      tr_cl <- out$cluster[-n1]
-      ts_cl <- out$cluster[n1]
+      if (binning == "kmeans") {
+        if (k == 0) {
+          k <- elbow_method(as.matrix(xn1), NULL, "kmeans")
+        }
+        out <- stats::kmeans(as.matrix(xn1), k)
+        tr_cl <- out$cluster[-n1]
+        ts_cl <- out$cluster[n1]
+      } else if (binning == "hclust") {
+        hclust_cl <- opt_hclust(xn1, "ward.D2", cut, k)
+        k <- length(unique(hclust_cl))
+        tr_cl <- hclust_cl[-n1]
+        ts_cl <- hclust_cl[n1]
+      } else if (binning == "dbscan") {
+        dbscan_cl <- fpc::dbscan(as.matrix(xn1), eps=eps, MinPts=minPts)
+        k <- length(unique(dbscan_cl$cluster))
+        tr_cl <- dbscan_cl$cluster[-n1]
+        tr_cl <- tr_cl[tr_cl != 0]
+        ts_cl <- dbscan_cl$cluster[n1]
+      }
 
       points <- sapply(1:k, function(cl) {
         if (sum(tr_cl == cl) == 0) {
