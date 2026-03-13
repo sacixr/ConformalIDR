@@ -14,9 +14,13 @@ conformal_bin(
   y_est = NULL,
   online = FALSE,
   weights = NULL,
-  binning = c("kmeans", "tree"),
+  binning = c("kmeans", "tree", "hclust", "dbscan"),
+  cut,
   k = 1,
-  cp = 0.01
+  cp = 0.01,
+  eps = 0.5,
+  minPts = 1,
+  cluster_on = c("x", "y")
 )
 }
 \arguments{
@@ -38,11 +42,17 @@ data set. Default is \code{FALSE}.}
 \item{weights}{non-negative weights assigned to each training covariate and the
 new covariate. If omitted, equal weights are used (the default).}
 
-\item{binning}{binning method used to construct the bins; either \code{"k-means"} (default) or \code{"tree"}}
+\item{binning}{binning method used to construct the bins; either \code{"k-means"} (default), \code{"tree"}, \code{"hclust"} or \code{"dbscan"}}
 
 \item{k}{number of bins (for k-means clustering)}
 
 \item{cp}{complexity parameter (for regression tree binning)}
+
+\item{eps}{epsilon parameter (for DBSCAN binning)}
+
+\item{minPts}{minPts parameter (for DBSCAN binning)}
+
+\item{cluster_on}{binning on covariates `x` or observations `y`}
 }
 \value{
 \code{conformal_bin()} returns a list of objects of class \code{"cops"} containing
@@ -105,10 +115,12 @@ fit5 <- conformal_bin(x, y, x_out, y_out, k = 5)
 fit100 <- conformal_bin(x, y, x_out, y_out, k = 100)
 
 # compare for different k
-crps_vec <- c("k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
-              "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
-              "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
-              "k = 100" = sapply(fit100, function(x) x$crps) |> mean())
+crps_vec <- c(
+  "k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
+  "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
+  "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
+  "k = 100" = sapply(fit100, function(x) x$crps) |> mean()
+)
 print(crps_vec)
 
 
@@ -124,10 +136,12 @@ fit5 <- conformal_bin(x, y, x_out, y_out, x_est, y_est, k = 5)
 fit100 <- conformal_bin(x, y, x_out, y_out, x_est, y_est, k = 100)
 
 # compare for different k
-crps_vec_sp <- c("k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
-                 "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
-                 "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
-                 "k = 100" = sapply(fit100, function(x) x$crps) |> mean())
+crps_vec_sp <- c(
+  "k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
+  "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
+  "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
+  "k = 100" = sapply(fit100, function(x) x$crps) |> mean()
+)
 print(crps_vec_sp)
 
 
@@ -140,15 +154,16 @@ fit05 <- conformal_bin(x, y, x_out, y_out, x_est, y_est, binning = "tree", cp = 
 fit1 <- conformal_bin(x, y, x_out, y_out, x_est, y_est, binning = "tree", cp = 0.1)
 
 # compare for different cp
-crps_vec_sp_tr <- c("cp = 0.0001" = sapply(fit001, function(x) x$crps) |> mean(),
-                 "cp = 0.001" = sapply(fit01, function(x) x$crps) |> mean(),
-                 "cp = 0.005" = sapply(fit05, function(x) x$crps) |> mean(),
-                 "cp = 0.01" = sapply(fit, function(x) x$crps) |> mean(),
-                 "cp = 0.1" = sapply(fit1, function(x) x$crps) |> mean())
+crps_vec_sp_tr <- c(
+  "cp = 0.0001" = sapply(fit001, function(x) x$crps) |> mean(),
+  "cp = 0.001" = sapply(fit01, function(x) x$crps) |> mean(),
+  "cp = 0.005" = sapply(fit05, function(x) x$crps) |> mean(),
+  "cp = 0.01" = sapply(fit, function(x) x$crps) |> mean(),
+  "cp = 0.1" = sapply(fit1, function(x) x$crps) |> mean()
+)
 print(crps_vec_sp_tr)
 
 print(c(crps_vec_sp, crps_vec_sp_tr))
-
 
 }
 \references{

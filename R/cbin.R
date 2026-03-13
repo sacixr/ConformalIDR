@@ -9,6 +9,10 @@
 #' @param binning binning method used to construct the bins; either \code{"k-means"} (default), \code{"tree"}, \code{"hclust"} or \code{"dbscan"}
 #' @param k number of bins (for k-means clustering)
 #' @param cp complexity parameter (for regression tree binning)
+#' @param cluster_on binning on covariates `x` or observations `y`
+#' @param eps epsilon parameter (for DBSCAN binning)
+#' @param minPts minPts parameter (for DBSCAN binning)
+#'
 #'
 #' @return
 #' \code{conformal_bin()} returns a list of objects of class \code{"cops"} containing
