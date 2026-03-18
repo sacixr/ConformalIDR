@@ -11,6 +11,10 @@
 #' @param cp complexity parameter (for regression tree binning)
 #' @param weights non-negative weights assigned to each training covariate and the
 #' new covariate. If omitted, equal weights are used (the default).
+#' @param cluster_on binning on covariates `x` or observations `y`
+#' @param eps epsilon parameter (for DBSCAN binning)
+#' @param minPts minPts parameter (for DBSCAN binning)
+#'
 #'
 #' @return
 #' \code{conformal_bin()} returns a list of objects of class \code{"cops"} containing
@@ -83,10 +87,12 @@
 #' fit100 <- conformal_bin(x, y, x_out, y_out, k = 100)
 #'
 #' # compare for different k
-#' crps_vec <- c("k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
-#'               "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
-#'               "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
-#'               "k = 100" = sapply(fit100, function(x) x$crps) |> mean())
+#' crps_vec <- c(
+#'   "k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
+#'   "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
+#'   "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
+#'   "k = 100" = sapply(fit100, function(x) x$crps) |> mean()
+#' )
 #' print(crps_vec)
 #'
 #'
@@ -102,10 +108,12 @@
 #' fit100 <- conformal_bin(x, y, x_out, y_out, x_est, y_est, k = 100)
 #'
 #' # compare for different k
-#' crps_vec_sp <- c("k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
-#'                  "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
-#'                  "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
-#'                  "k = 100" = sapply(fit100, function(x) x$crps) |> mean())
+#' crps_vec_sp <- c(
+#'   "k = 1" = sapply(fit1, function(x) x$crps) |> mean(),
+#'   "k = 5" = sapply(fit5, function(x) x$crps) |> mean(),
+#'   "k = 10" = sapply(fit, function(x) x$crps) |> mean(),
+#'   "k = 100" = sapply(fit100, function(x) x$crps) |> mean()
+#' )
 #' print(crps_vec_sp)
 #'
 #'
@@ -118,20 +126,22 @@
 #' fit1 <- conformal_bin(x, y, x_out, y_out, x_est, y_est, binning = "tree", cp = 0.1)
 #'
 #' # compare for different cp
-#' crps_vec_sp_tr <- c("cp = 0.0001" = sapply(fit001, function(x) x$crps) |> mean(),
-#'                  "cp = 0.001" = sapply(fit01, function(x) x$crps) |> mean(),
-#'                  "cp = 0.005" = sapply(fit05, function(x) x$crps) |> mean(),
-#'                  "cp = 0.01" = sapply(fit, function(x) x$crps) |> mean(),
-#'                  "cp = 0.1" = sapply(fit1, function(x) x$crps) |> mean())
+#' crps_vec_sp_tr <- c(
+#'   "cp = 0.0001" = sapply(fit001, function(x) x$crps) |> mean(),
+#'   "cp = 0.001" = sapply(fit01, function(x) x$crps) |> mean(),
+#'   "cp = 0.005" = sapply(fit05, function(x) x$crps) |> mean(),
+#'   "cp = 0.01" = sapply(fit, function(x) x$crps) |> mean(),
+#'   "cp = 0.1" = sapply(fit1, function(x) x$crps) |> mean()
+#' )
 #' print(crps_vec_sp_tr)
 #'
 #' print(c(crps_vec_sp, crps_vec_sp_tr))
 #'
-#'
 #' @name cbin
 #' @export
-conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL, online = FALSE, weights = NULL, binning = c("kmeans", "tree", "hclust", "dbscan"), cut, k = 1, cp = 0.01, eps=0.5, minPts=1) {
+conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL, online = FALSE, weights = NULL, binning = c("kmeans", "tree", "hclust", "dbscan"), cut, k = 1, cp = 0.01, eps = 0.5, minPts = 1, cluster_on = c("x", "y")) {
   binning <- match.arg(binning)
+  cluster_on <- match.arg(cluster_on)
   check_cops_args(x, y, x_out, y_out, x_est, y_est, "cbin", online, weights, binning = binning, k = k, cp = cp)
 
   eval <- !is.null(y_out)
@@ -141,12 +151,24 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
     # split conformal - estimate clusters on the estimation sample
 
     if (binning == "kmeans") {
-      if (k == 0) { # if k is not provided, estimate an optimal k
-        k <- elbow_method(as.matrix(x_est), NULL, "kmeans")
+      if (cluster_on == "x") {
+        if (k == 0) { # if k is not provided, estimate an optimal k
+          k <- elbow_method(as.matrix(x_est), NULL, "kmeans")
+        }
+        out <- stats::kmeans(as.matrix(x_est), k)
+        tr_cl <- clue::cl_predict(out, as.matrix(x)) |> as.vector()
+        ts_cl <- clue::cl_predict(out, as.matrix(x_out)) |> as.vector()
+      } else {
+        train_control <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
+        model_est <- train(y_est ~., data = data.frame(x_est, y_est), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)$pred$pred
+        out <- stats::kmeans(as.matrix(model_est), k)
+
+        model_y <- train(y ~., data = data.frame(x, y), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)$pred$pred
+        tr_cl <- clue::cl_predict(out, as.matrix(model_y)) |> as.vector()
+
+        model_out <- train(y_out ~., data = data.frame(x, y), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)$pred$pred
+        ts_cl <- clue::cl_predict(out, as.matrix(model_out)) |> as.vector()
       }
-      out <- stats::kmeans(as.matrix(x_est), k)
-      tr_cl <- clue::cl_predict(out, as.matrix(x)) |> as.vector()
-      ts_cl <- clue::cl_predict(out, as.matrix(x_out)) |> as.vector()
     } else if (binning == "tree") {
       dat <- data.frame(y = y_est, x = x_est)
       tree <- rpart::rpart(y ~ x, data = dat, method = "anova", control = rpart::rpart.control(cp = cp))
@@ -160,18 +182,18 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
       hclust_cl <- opt_hclust(x_est, "ward.D2", cut, k)
       x_est <- as.matrix(x_est)
       k <- length(unique(hclust_cl))
-      tr_cl <- class::knn(x_est, as.matrix(x), cl=factor(hclust_cl), k=k) # since hclust doesn't naturally classify, we use knn
-      ts_cl <- class::knn(x_est, as.matrix(x_out), cl=factor(hclust_cl), k=k)
+      tr_cl <- class::knn(x_est, as.matrix(x), cl = factor(hclust_cl), k = k) # since hclust doesn't naturally classify, we use knn
+      ts_cl <- class::knn(x_est, as.matrix(x_out), cl = factor(hclust_cl), k = k)
     } else if (binning == "dbscan") {
       x_est <- as.matrix(x_est)
-      dbscan_cl <- fpc::dbscan(x_est, eps=eps, MinPts=minPts)
+      dbscan_cl <- fpc::dbscan(x_est, eps = eps, MinPts = minPts)
       k <- length(unique(dbscan_cl$cluster))
       tr_cl <- fpc::predict.dbscan(dbscan_cl, x_est, as.matrix(x))
-      y <- y[tr_cl!=0] # remove outliers
-      tr_cl <- tr_cl[tr_cl!=0]
+      y <- y[tr_cl != 0] # remove outliers
+      tr_cl <- tr_cl[tr_cl != 0]
       ts_cl <- fpc::predict.dbscan(dbscan_cl, x_est, as.matrix(x_out))
-      x_out <- x_out[ts_cl!=0]
-      ts_cl <- ts_cl[ts_cl!=0]
+      x_out <- x_out[ts_cl != 0]
+      ts_cl <- ts_cl[ts_cl != 0]
     }
 
     if (is.null(weights)) {
@@ -237,7 +259,7 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         tr_cl <- hclust_cl[-n1]
         ts_cl <- hclust_cl[n1]
       } else if (binning == "dbscan") {
-        dbscan_cl <- fpc::dbscan(as.matrix(xn1), eps=eps, MinPts=minPts)
+        dbscan_cl <- fpc::dbscan(as.matrix(xn1), eps = eps, MinPts = minPts)
         k <- length(unique(dbscan_cl$cluster))
         tr_cl <- dbscan_cl$cluster[-n1]
         tr_cl <- tr_cl[tr_cl != 0]
@@ -266,9 +288,7 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
       out <- c(out, bins = list(x = tr_cl, x_out = ts_cl))
       structure(out, class = "cops")
     })
-
   }
 
   return(out_list)
-
 }
