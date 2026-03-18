@@ -14,9 +14,12 @@ conformal_bin(
   y_est = NULL,
   online = FALSE,
   weights = NULL,
-  binning = c("kmeans", "tree"),
+  binning = c("kmeans", "tree", "hclust", "dbscan"),
+  cut,
   k = 1,
-  cp = 0.01
+  cp = 0.01,
+  eps = 0.5,
+  minPts = 1
 )
 }
 \arguments{
@@ -38,7 +41,7 @@ data set. Default is \code{FALSE}.}
 \item{weights}{non-negative weights assigned to each training covariate and the
 new covariate. If omitted, equal weights are used (the default).}
 
-\item{binning}{binning method used to construct the bins; either \code{"k-means"} (default) or \code{"tree"}}
+\item{binning}{binning method used to construct the bins; either \code{"k-means"} (default), \code{"tree"}, \code{"hclust"} or \code{"dbscan"}}
 
 \item{k}{number of bins (for k-means clustering)}
 
