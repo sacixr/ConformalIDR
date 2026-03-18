@@ -172,10 +172,29 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
       ts_cl <- ts_cl[ts_cl!=0]
     }
 
-    points <- sapply(1:k, function(i) y[tr_cl == i] |> sort())
-    points <- lapply(points, function(x) c(-Inf, x, Inf))
-    points[[k+1]] <- c(-Inf, y, Inf) |> sort()
-    cdfs <- lapply(points, function(x) sample_to_bounds(length(x) - 1))
+    if (is.null(weights)) {
+      points <- sapply(1:k, function(i) y[tr_cl == i] |> sort())
+      points <- lapply(points, function(x) c(-Inf, x, Inf))
+      points[[k + 1]] <- c(-Inf, y, Inf) |> sort()
+      cdfs <- lapply(points, function(x) sample_to_bounds(length(x) - 1))
+    } else {
+      points <- vector("list", k + 1)
+      weights_p <- vector("list", k + 1)
+
+      for (i in 1:k) {
+        ord <- y[tr_cl == i] |> order()
+        # sort the weights in line with the points
+        # append max weight for padding
+        weights_p[[i]] <- c((weights[tr_cl == i])[ord], max(weights)+1)
+        points[[i]] <- y[tr_cl == i] |> sort()
+      }
+
+      points <- lapply(points, function(x) c(-Inf, x, Inf))
+      ord <- y |> order()
+      points[[k+1]] <- c(-Inf, y[ord], Inf)
+      weights_p[[k+1]] <- weights[ord] # sort for unconditional bin
+      cdfs <- lapply(weights_p, function(i) sample_to_bounds_w(i))
+    }
 
     eval <- !is.null(y_out)
     out_list <- lapply(seq_along(x_out), function(i) {
@@ -194,6 +213,7 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
       out <- c(out, bins = list(x = tr_cl, x_out = ts_cl[i]))
       structure(out, class = "cops")
     })
+
 
   } else {
     # full conformal - estimate clusters using the new training covariate x_n+1
