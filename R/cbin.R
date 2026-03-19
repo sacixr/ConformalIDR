@@ -250,9 +250,16 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         if (k == 0) {
           k <- elbow_method(as.matrix(xn1), NULL, "kmeans")
         }
-        out <- stats::kmeans(as.matrix(xn1), k)
-        tr_cl <- out$cluster[-n1]
-        ts_cl <- out$cluster[n1]
+        if (cluster_on == "x") {
+          out <- stats::kmeans(as.matrix(xn1), k)
+          tr_cl <- out$cluster[-n1]
+          ts_cl <- out$cluster[n1]
+        } else {
+          yn1 <- knn.reg(train=xn1, y=y, k=3)$pred |> as.matrix()
+          out <- stats::kmeans(yn1, k)
+          tr_cl <- out$cluster[-n]
+          ts_cl <- out$cluster[n]
+        }
       } else if (binning == "hclust") {
         hclust_cl <- opt_hclust(xn1, "ward.D2", cut, k)
         k <- length(unique(hclust_cl))
