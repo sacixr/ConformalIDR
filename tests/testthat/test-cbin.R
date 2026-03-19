@@ -117,7 +117,7 @@ test_that("full and split conformal y-binning using kmeans works", {
   ))
 })
 
-test_that("weighted split conformal bin works", {
+test_that("weighted full and split conformal bin works", {
   n <- 1000
   x <- rnorm(n)
   y <- rnorm(n, x, exp(x))
@@ -131,12 +131,19 @@ test_that("weighted split conformal bin works", {
   y_est <- rnorm(N0, x_est, exp(x_est))
 
   n_weights <- c(seq(1, n), seq(1,N))
+  full_w <- conformal_bin(x, y, x_out, y_out, binning = "kmeans", k = 10, weights = n_weights)
   split_w <- conformal_bin(x, y, x_out, y_out, x_est, y_est, binning = "kmeans", k = 10, weights = n_weights)
 
   expect_true(all(sapply(split_w, inherits, "cops")))
   expect_lte(length(split_w), 100)
   expect_true(all(
     sapply(split_w, function(x) is.list(x) && length(x) <= 13)
+  ))
+
+  expect_true(all(sapply(full_w, inherits, "cops")))
+  expect_lte(length(full_w), 100)
+  expect_true(all(
+    sapply(full_w, function(x) is.list(x) && length(x) <= 13)
   ))
 })
 
