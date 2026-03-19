@@ -266,15 +266,32 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         ts_cl <- dbscan_cl$cluster[n1]
       }
 
-      points <- sapply(1:k, function(cl) {
-        if (sum(tr_cl == cl) == 0) {
-          y |> sort()
-        } else {
-          y[tr_cl == cl] |> sort()
+      if (is.null(weights)) {
+        points <- sapply(1:k, function(cl) {
+          if (sum(tr_cl == cl) == 0) {
+            y |> sort()
+          } else {
+            y[tr_cl == cl] |> sort()
+          }
+        })
+        points <- lapply(points, function(z) c(-Inf, z, Inf))
+        cdfs <- lapply(points, function(z) sample_to_bounds(length(z) - 1))
+      } else {
+        points <- vector("list", k + 1)
+        weights_p <- vector("list", k + 1)
+
+        for (i in 1:k) {
+          ord <- y[tr_cl == i] |> order()
+          weights_p[[i]] <- c((weights[tr_cl == i])[ord], max(weights)+1)
+          points[[i]] <- y[tr_cl == i] |> sort()
         }
-      })
-      points <- lapply(points, function(z) c(-Inf, z, Inf))
-      cdfs <- lapply(points, function(z) sample_to_bounds(length(z) - 1))
+
+        points <- lapply(points, function(x) c(-Inf, x, Inf))
+        ord <- y |> order()
+        points[[k+1]] <- c(-Inf, y[ord], Inf)
+        weights_p[[k+1]] <- weights[ord]
+        cdfs <- lapply(weights_p, function(i) sample_to_bounds_w(i))
+      }
 
       out <- c(points = points[ts_cl], cdfs[[ts_cl]], list(x = x, y = y, x_out = x_out[i]))
       out <- structure(out, class = "cops")
