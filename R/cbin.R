@@ -256,6 +256,7 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
           ts_cl <- out$cluster[n1]
         } else {
           yn1 <- knn.reg(train=xn1, y=y, k=3)$pred |> as.matrix()
+          yn1[is.na(yn1)] <- 0
           out <- stats::kmeans(yn1, k)
           tr_cl <- out$cluster[-n]
           ts_cl <- out$cluster[n]
