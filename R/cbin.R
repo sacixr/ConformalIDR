@@ -248,7 +248,6 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         if (k == 0) {
           k <- elbow_method(as.matrix(xn1), NULL, "kmeans")
         }
-
         if (cluster_on == "x") {
           out <- stats::kmeans(as.matrix(xn1), k)
           tr_cl <- out$cluster[-n1]
