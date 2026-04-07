@@ -139,9 +139,8 @@
 #'
 #' @name cbin
 #' @export
-conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL, online = FALSE, weights = NULL, binning = c("kmeans", "tree", "hclust", "dbscan"), cut, k = 1, cp = 0.01, eps = 0.5, minPts = 1, cluster_on = c("x", "y")) {
+conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL, online = FALSE, weights = NULL, binning = c("kmeans", "tree", "hclust", "dbscan"), cut, k = 1, cp = 0.01, eps = 0.5, minPts = 1, cluster_on) {
   binning <- match.arg(binning)
-  cluster_on <- match.arg(cluster_on)
   check_cops_args(x, y, x_out, y_out, x_est, y_est, "cbin", online, weights, binning = binning, k = k, cp = cp)
 
   eval <- !is.null(y_out)
@@ -160,14 +159,14 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         ts_cl <- clue::cl_predict(out, as.matrix(x_out)) |> as.vector()
       } else {
         train_control <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
-        model_est <- train(y_est ~., data = data.frame(x_est, y_est), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)$pred$pred
-        out <- stats::kmeans(as.matrix(model_est), k)
+        model_est <- caret::train(y_est ~., data = data.frame(x_est, y_est), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)
+        out <- stats::kmeans(as.matrix(model_est$pred$pred), k)
 
-        model_y <- train(y ~., data = data.frame(x, y), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)$pred$pred
-        tr_cl <- clue::cl_predict(out, as.matrix(model_y)) |> as.vector()
+        model_y <- caret::train(y ~., data = data.frame(x, y), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)
+        tr_cl <- clue::cl_predict(out, as.matrix(model_y$pred$pred)) |> as.vector()
 
-        model_out <- train(y_out ~., data = data.frame(x, y), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)$pred$pred
-        ts_cl <- clue::cl_predict(out, as.matrix(model_out)) |> as.vector()
+        model_out <- caret::train(y_out ~., data = data.frame(x_out, y_out), method = "knn", tuneGrid = data.frame(k = 3), trControl = train_control)
+        ts_cl <- clue::cl_predict(out, as.matrix(model_out$pred$pred)) |> as.vector()
       }
     } else if (binning == "tree") {
       dat <- data.frame(y = y_est, x = x_est)
@@ -241,7 +240,6 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
 
   } else {
     # full conformal - estimate clusters using the new training covariate x_n+1
-
     out_list <- lapply(seq_along(x_out), function(i) {
       xn1 <- c(x, x_out[i])
       n1 <- length(xn1)
@@ -258,9 +256,10 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
           yn1 <- knn.reg(train=xn1, y=y, k=3)$pred |> as.matrix()
           yn1[is.na(yn1)] <- 0
           out <- stats::kmeans(yn1, k)
-          tr_cl <- out$cluster[-n]
-          ts_cl <- out$cluster[n]
+          tr_cl <- out$cluster[-n1]
+          ts_cl <- out$cluster[n1]
         }
+
       } else if (binning == "hclust") {
         hclust_cl <- opt_hclust(xn1, "ward.D2", cut, k)
         k <- length(unique(hclust_cl))
@@ -274,6 +273,8 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         ts_cl <- dbscan_cl$cluster[n1]
       }
 
+      points <- vector("list", k + 1) # produce list for points
+
       if (is.null(weights)) {
         points <- sapply(1:k, function(cl) {
           if (sum(tr_cl == cl) == 0) {
@@ -285,19 +286,20 @@ conformal_bin <- function(x, y, x_out, y_out = NULL, x_est = NULL, y_est = NULL,
         points <- lapply(points, function(z) c(-Inf, z, Inf))
         cdfs <- lapply(points, function(z) sample_to_bounds(length(z) - 1))
       } else {
-        points <- vector("list", k + 1)
         weights_p <- vector("list", k + 1)
 
-        for (i in 1:k) {
-          ord <- y[tr_cl == i] |> order()
-          weights_p[[i]] <- c((weights[tr_cl == i])[ord], max(weights)+1)
-          points[[i]] <- y[tr_cl == i] |> sort()
+        for (cl in 1:k) {
+          if (sum(tr_cl == cl) == 0) { # unconditional bin when no points
+            ord <- y |> order()
+            weights_p[[cl]] <- (weights[1:length(y)])[ord]
+            points[[cl]] <- y[-1] |> sort()
+          } else {
+            ord <- y[tr_cl == cl] |> order()
+            weights_p[[cl]] <- c((weights[tr_cl == cl])[ord], max(weights)+1)
+            points[[cl]] <- y[tr_cl == cl] |> sort()
+          }
         }
-
-        points <- lapply(points, function(x) c(-Inf, x, Inf))
-        ord <- y |> order()
-        points[[k+1]] <- c(-Inf, y[ord], Inf)
-        weights_p[[k+1]] <- weights[ord]
+        points <- lapply(points, function(z) c(-Inf, z, Inf))
         cdfs <- lapply(weights_p, function(i) sample_to_bounds_w(i))
       }
 
